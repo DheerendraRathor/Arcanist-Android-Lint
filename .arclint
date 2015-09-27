@@ -1,0 +1,25 @@
+{
+    "linters": {
+        "chmod": {
+            "type": "chmod"
+        },
+        "android": {
+            "type": "android",
+            "include": "(\\.java$|\\.xml$|\\.png$|\\.jpg$)"
+        },
+        "text": {
+            "type": "text",
+            "text.max-line-length": 100
+        },
+        "filename": {
+            "type": "filename"
+        },
+        "spelling": {
+            "type": "spelling"
+        },
+        "xml": {
+            "type": "xml",
+            "include": "(\\.xml$)"
+        }
+    }
+}

@@ -1,0 +1,24 @@
+apply plugin: 'findbugs'
+
+tasks.withType(FindBugs){
+    description 'Run findbugs'
+    group 'verification'
+    ignoreFailures = true
+
+    classes = fileTree('build/intermediates/classes/debug/')
+    source = fileTree('src/main/java/')
+    classpath = files()
+
+    effort = 'max'
+
+    excludeFilter = file("./config/findbug/exclude.xml")
+}
+
+task findbugs (type: FindBugs) {
+
+    reports {
+        xml.enabled = true
+        xml.withMessages = true
+        html.enabled = !xml.isEnabled()
+    }
+}

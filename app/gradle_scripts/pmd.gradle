@@ -1,0 +1,16 @@
+apply plugin: 'pmd'
+
+task pmd (type: Pmd) {
+
+    description 'Run pmd'
+    group 'verification'
+    ignoreFailures = true
+
+    ruleSets = ["java-basic", "java-braces", "java-strings", "java-design", "java-unusedcode"]
+    source = fileTree('src/main/java')
+
+    reports {
+        xml.enabled = true
+        html.enabled = !xml.isEnabled()
+    }
+}

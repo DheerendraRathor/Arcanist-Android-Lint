@@ -1,0 +1,7 @@
+{
+  "phabricator.uri" : "http://phabricator.example.org/",
+  "repository.callsign" : "REPO",
+  "phutil_libraries": [
+    ".arclib"
+  ]
+}

@@ -1,0 +1,25 @@
+apply plugin: 'checkstyle'
+
+checkstyle {
+    toolVersion = "6.9"
+}
+
+task checkstyle (type: Checkstyle) {
+
+    description 'Run checkstyle'
+    group 'verification'
+
+    source 'src/main/java'
+    include '**/*.java'
+    ignoreFailures = true
+
+    def configProps = ['proj.module.dir': projectDir.absolutePath]
+    configProperties configProps
+
+    // empty classpath
+    classpath = files()
+
+    reports {
+        xml.enabled = true
+    }
+}
