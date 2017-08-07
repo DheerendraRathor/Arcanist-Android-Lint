@@ -44,10 +44,6 @@ final class ArcanistAndroidLinter extends ArcanistLinter
     private $checkStyleEnabled = true;
     private $pmdEnabled = true;
     private $project = null;
-    /**
-     * @var bool only need lint once in each `arc lint` command
-     */
-    private $linted = false;
 
     public function getInfoName()
     {
