@@ -38,11 +38,16 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 final class ArcanistAndroidLinter extends ArcanistLinter
 {
-
     private $gradleModules = array('app');
+    private $lintEnabled = true;
     private $findBugsEnabled = true;
     private $checkStyleEnabled = true;
     private $pmdEnabled = true;
+    private $project = null;
+    /**
+     * @var bool only need lint once in each `arc lint` command
+     */
+    private $linted = false;
 
     public function getInfoName()
     {
@@ -56,12 +61,16 @@ final class ArcanistAndroidLinter extends ArcanistLinter
 
     public function getLinterConfigurationOptions()
     {
-
         $options = parent::getLinterConfigurationOptions();
 
         $options['modules'] = array(
             'type' => 'optional list<string>',
             'help' => pht('List of all gradle modules. Default is [\'app\']')
+        );
+
+        $options['lint'] = array(
+            'type' => 'optional bool',
+            'help' => pht('Enable lint. Enabled by default')
         );
 
         $options['findbugs'] = array(
@@ -79,6 +88,11 @@ final class ArcanistAndroidLinter extends ArcanistLinter
             'help' => pht('Enable pmd. Enabled by default')
         );
 
+        $options['project'] = array(
+            'type' => 'optional string',
+            'help' => pht('project directory. current directory by default')
+        );
+
         return $options;
     }
 
@@ -88,6 +102,9 @@ final class ArcanistAndroidLinter extends ArcanistLinter
             case 'modules':
                 $this->gradleModules = $value;
                 return;
+            case 'lint':
+                $this->lintEnabled = $value;
+                return;
             case 'findbugs':
                 $this->findBugsEnabled = $value;
                 return;
@@ -96,6 +113,9 @@ final class ArcanistAndroidLinter extends ArcanistLinter
                 return;
             case 'pmd':
                 $this->pmdEnabled = $value;
+                return;
+            case 'project':
+                $this->project = trim($value);
                 return;
         }
         parent::setLinterConfigurationValue($key, $value);
@@ -128,7 +148,6 @@ final class ArcanistAndroidLinter extends ArcanistLinter
 
     public function lintPath($path)
     {
-
         $lint_xml_files = $this->runGradle($path);
 
         $lint_files       = $lint_xml_files[0];
@@ -159,6 +178,16 @@ final class ArcanistAndroidLinter extends ArcanistLinter
         putenv('_JAVA_OPTIONS');
     }
 
+    private function getProjectPath($root, $project) {
+        if (empty($project)) {
+            return $root;
+        }
+        if (substr($project, 0, 1) == '/') {
+            return $project;
+        }
+        return realpath(join('/', [$root, $project]));
+    }
+
     private function getGradlePath()
     {
         $gradle_bin = "gradle";
@@ -171,14 +200,26 @@ final class ArcanistAndroidLinter extends ArcanistLinter
         return trim($stdout);
     }
 
+    private function shouldProcess($path, $output_path) {
+        if (file_exists($output_path)) {
+            $output_accessed_time = fileatime($output_path);
+            $path_modified_time   = Filesystem::getModifiedTime($path);
+            if ($path_modified_time > $output_accessed_time) {
+                unlink($output_path);
+                return true;
+            }
+        } else {
+            return true;
+        }
+        return false;
+    }
+
     private function runGradle($path)
     {
         $root = $this->getEngine()->getWorkingCopy()->getProjectRoot();
+        $project_path = $this->getProjectPath($root, $this->project);
+        $gradle_bin = join('/', [$project_path, "gradlew"]);
 
-        $gradle_bin = join('/', array(
-            rtrim($path, '/'),
-            "gradlew"
-        ));
         if (!file_exists($gradle_bin)) {
             $gradle_bin = $this->getGradlePath();
         }
@@ -192,44 +233,42 @@ final class ArcanistAndroidLinter extends ArcanistLinter
         $pmd_paths        = array();
 
         foreach ($this->gradleModules as $module) {
-            $lint_command .= ':' . $module . ':lint ';
+            if ($this->lintEnabled) {
+                $output_path = $project_path . '/' . str_replace(':', '/', $module);
+                $output_path .= '/build/outputs/lint-results-debug.xml';
+                if ($this->shouldProcess($path, $output_path)) {
+                    $lint_command .= ':' . $module . ':lint ';
+                    $output_paths[] = $output_path;
+                }
+            }
             if ($this->findBugsEnabled) {
-                $lint_command .= ':' . $module . ':findbugs ';
-                $findbugs_output_path = $root . '/' . str_replace(':', '/', $module);
+                $findbugs_output_path = $project_path . '/' . str_replace(':', '/', $module);
                 $findbugs_output_path .= '/build/reports/findbugs/findbugs.xml';
-                $findbugs_paths[] = $findbugs_output_path;
+                if ($this->shouldProcess($path, $findbugs_output_path)) {
+                    $lint_command .= ':' . $module . ':findbugs ';
+                    $findbugs_paths[] = $findbugs_output_path;
+                }
             }
             if ($this->checkStyleEnabled) {
-                $lint_command .= ':' . $module . ':checkstyle ';
-                $checkStyle_output_path = $root . '/' . str_replace(':', '/', $module);
+                $checkStyle_output_path = $project_path . '/' . str_replace(':', '/', $module);
                 $checkStyle_output_path .= '/build/reports/checkstyle/checkstyle.xml';
-                $checkStyle_paths[] = $checkStyle_output_path;
+                if ($this->shouldProcess($path, $checkStyle_output_path)) {
+                    $lint_command .= ':' . $module . ':checkstyle ';
+                    $checkStyle_paths[] = $checkStyle_output_path;
+                }
             }
             if ($this->pmdEnabled) {
-                $lint_command .= ':' . $module . ':pmd ';
-                $pmd_output_path = $root . '/' . str_replace(':', '/', $module);
+                $pmd_output_path = $project_path . '/' . str_replace(':', '/', $module);
                 $pmd_output_path .= '/build/reports/pmd/pmd.xml';
-                $pmd_paths[] = $pmd_output_path;
-            }
-
-            $output_path = $root . '/' . str_replace(':', '/', $module);
-            $output_path .= '/build/outputs/lint-results.xml';
-            $output_paths[] = $output_path;
-            $shouldLint     = False;
-            if (file_exists($output_path)) {
-                $output_accessed_time = fileatime($output_path);
-                $path_modified_time   = Filesystem::getModifiedTime($path);
-
-                if ($path_modified_time > $output_accessed_time) {
-                    unlink($output_path);
-                    $shouldLint = True;
+                if ($this->shouldProcess($path, $pmd_output_path)) {
+                    $lint_command .= ':' . $module . ':pmd ';
+                    $pmd_paths[] = $pmd_output_path;
                 }
-            } else {
-                $shouldLint = True;
             }
-            if ($shouldLint) {
-                $final_lint_command = $gradle_bin . ' ' . $lint_command;
-                echo "Linting Project...\n";
+
+            if (!empty($lint_command)) {
+                $final_lint_command = "$gradle_bin -p $project_path $lint_command";
+                echo "Linting $path \n";
                 echo "Executing: $final_lint_command \n";
                 exec_manual($final_lint_command);
             }
@@ -237,10 +276,9 @@ final class ArcanistAndroidLinter extends ArcanistLinter
 
         chdir($cwd);
 
-
         foreach ($output_paths as $output_path) {
             if (!file_exists($output_path)) {
-                throw new ArcanistUsageException('Error executing gradle command');
+                throw new ArcanistUsageException("Error executing gradle command!\n $output_path is not existed");
             }
         }
 
